@@ -1,13 +1,77 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"gameapp/entity"
 	"gameapp/repository/mysql"
+	"gameapp/service/userservice"
+	"io"
+	"log"
+	"net/http"
 )
 
 func main() {
 
+	// first method
+	http.HandleFunc("/health-check", healthCheckHandler)
+	http.HandleFunc("/users/register", userRegisterHandler)
+
+	log.Println("server is listening on port 8080...")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		panic(err)
+	}
+
+	// second method => multiplexer
+	//mux := http.NewServeMux()
+	//mux.HandleFunc("/health-check", healthCheckHandler)
+	//mux.HandleFunc("/users/register", userRegisterHandler)
+	//
+	//http.ListenAndServe(":8080", mux)
+}
+
+func userRegisterHandler(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		fmt.Fprintf(rw, `{"error": "invalid method"}`)
+
+		return
+	}
+
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+		//	 or use => fmt.Fprintf(rw, `{"error": "invalid method"}`)
+
+		return
+	}
+
+	var uReq userservice.RegisterRequest
+	err = json.Unmarshal(data, &uReq)
+	if err != nil {
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+		//	 or use => fmt.Fprintf(rw, `{"error": "invalid method"}`)
+
+		return
+	}
+
+	mysqlRepo := mysql.New()
+	userSvc := userservice.New(mysqlRepo)
+
+	resp, err := userSvc.Register(uReq)
+	if err != nil {
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+
+		return
+	}
+
+	rw.Write([]byte(fmt.Sprintf(`{"message": "user registered, %v"}`, resp)))
+
+}
+
+func healthCheckHandler(rw http.ResponseWriter, req *http.Request) {
+
+	fmt.Fprintf(rw, `{"message": "everything is ok!"}`)
 }
 
 func testUserMysqlRepo() {
@@ -15,7 +79,7 @@ func testUserMysqlRepo() {
 
 	createdUser, err := mysqlRepo.Register(entity.User{
 		ID:          0,
-		PhoneNumber: "2020-12",
+		PhoneNumber: "0912345678",
 		Name:        "hossein",
 	})
 
