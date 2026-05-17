@@ -11,6 +11,7 @@ import (
 type Repository interface {
 	IsPhoneNumberUnique(phoneNumber string) (bool, error)
 	Register(u entity.User) (entity.User, error)
+	GetUserByPhoneNumber(phoneNumber string) (entity.User, bool, error)
 }
 
 type Service struct {
@@ -88,4 +89,36 @@ func (s Service) Register(req RegisterRequest) (RegisterResponse, error) {
 func getMD5Hash(text string) string {
 	hash := md5.Sum([]byte(text))
 	return hex.EncodeToString(hash[:])
+}
+
+type LoginRequest struct {
+	PhoneNumber string `json:"phone_number"`
+	Password    string `json:"password"`
+}
+
+type LoginResponse struct {
+}
+
+func (s Service) Login(req LoginRequest) (LoginResponse, error) {
+	// TODO - it would be better to user two separate method for existence check and getUserByPhoneNumber
+	user, exist, err := s.repo.GetUserByPhoneNumber(req.PhoneNumber)
+	if err != nil {
+		return LoginResponse{}, fmt.Errorf("unexpected error: %w", err)
+	}
+
+	//if !exist {
+	//	return LoginResponse{}, fmt.Errorf("user does not exist")
+	//}
+
+	//if user.Password != getMD5Hash(req.Password) {
+	//	return LoginResponse{}, fmt.Errorf("invalid password")
+	//}
+
+	// for security login concept and avoid vulnerability using the below method instead of up
+
+	if !exist || user.Password != getMD5Hash(req.Password) {
+		return LoginResponse{}, fmt.Errorf("invalid credentials")
+	}
+
+	return LoginResponse{}, nil
 }
