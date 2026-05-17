@@ -1,6 +1,8 @@
 package userservice
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"gameapp/entity"
 	"gameapp/pkg/phonenumber"
@@ -18,6 +20,7 @@ type Service struct {
 type RegisterRequest struct {
 	Name        string `json:"name"`
 	PhoneNumber string `json:"phone_number"`
+	Password    string `json:"password"`
 }
 
 type RegisterResponse struct {
@@ -53,12 +56,24 @@ func (s Service) Register(req RegisterRequest) (RegisterResponse, error) {
 		return RegisterResponse{}, fmt.Errorf("name lenght is too short, it should be greater than 3")
 	}
 
-	//	create new user in storage
+	// TODO - check the password with regex pattern
+	// validate password
+	if len(req.Password) < 8 {
+		return RegisterResponse{}, fmt.Errorf("password lenght is too short, it should be greater than 8")
+	}
+
+	// TODO - replace md5 with bcrypt
+	//pass := []byte(req.Password)
+	//bcrypt.GenerateFromPassword(pass, bcrypt.MinCost)
+
 	user := entity.User{
 		ID:          0,
 		PhoneNumber: req.PhoneNumber,
 		Name:        req.Name,
+		Password:    getMD5Hash(req.Password),
 	}
+
+	//	create new user in storage
 	createdUser, err := s.repo.Register(user)
 	if err != nil {
 		return RegisterResponse{}, fmt.Errorf("unexpected error: %w", err)
@@ -68,4 +83,9 @@ func (s Service) Register(req RegisterRequest) (RegisterResponse, error) {
 	return RegisterResponse{
 		User: createdUser,
 	}, nil
+}
+
+func getMD5Hash(text string) string {
+	hash := md5.Sum([]byte(text))
+	return hex.EncodeToString(hash[:])
 }
