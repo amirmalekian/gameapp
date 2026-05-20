@@ -3,12 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"gameapp/entity"
 	"gameapp/repository/mysql"
 	"gameapp/service/userservice"
 	"io"
 	"log"
 	"net/http"
+)
+
+const (
+	JwtSignKey = "jwt_secret"
 )
 
 func main() {
@@ -17,6 +20,7 @@ func main() {
 	http.HandleFunc("/health-check", healthCheckHandler)
 	http.HandleFunc("/users/register", userRegisterHandler)
 	http.HandleFunc("/users/login", userLoginHandler)
+	http.HandleFunc("/users/profile", userProfileHandler)
 
 	log.Println("server is listening on port 8080...")
 	err := http.ListenAndServe(":8080", nil)
@@ -58,7 +62,7 @@ func userRegisterHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	mysqlRepo := mysql.New()
-	userSvc := userservice.New(mysqlRepo)
+	userSvc := userservice.New(mysqlRepo, JwtSignKey)
 
 	resp, err := userSvc.Register(uReq)
 	if err != nil {
@@ -79,11 +83,15 @@ func healthCheckHandler(rw http.ResponseWriter, req *http.Request) {
 func userLoginHandler(rw http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		fmt.Fprintf(rw, `{"error": "invalid method"}`)
+
+		return
 	}
 
 	data, err := io.ReadAll(req.Body)
 	if err != nil {
 		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+
+		return
 	}
 
 	var lReq userservice.LoginRequest
@@ -95,7 +103,7 @@ func userLoginHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	mysqlRepo := mysql.New()
-	userSvc := userservice.New(mysqlRepo)
+	userSvc := userservice.New(mysqlRepo, JwtSignKey)
 
 	resp, err := userSvc.Login(lReq)
 	if err != nil {
@@ -104,30 +112,54 @@ func userLoginHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rw.Write([]byte(fmt.Sprintf(`{"message": "user registered, %v"}`, resp)))
+	data, err = json.Marshal(resp)
+	if err != nil {
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 
-	rw.Write([]byte(fmt.Sprintf(`{"message": "user credentials is OK, %v"}`, lReq)))
+		return
+	}
+
+	rw.Write(data)
 }
 
-func testUserMysqlRepo() {
+func userProfileHandler(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		fmt.Fprintf(rw, `{"error": "invalid method"}`)
+	}
+
+	pReq := userservice.ProfileRequest{UserID: 0}
+
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+
+		return
+	}
+
+	err = json.Unmarshal(data, &pReq)
+	if err != nil {
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+
+		return
+	}
+
 	mysqlRepo := mysql.New()
+	userSvc := userservice.New(mysqlRepo, JwtSignKey)
 
-	createdUser, err := mysqlRepo.Register(entity.User{
-		ID:          0,
-		PhoneNumber: "0912345678",
-		Name:        "hossein",
-	})
-
+	resp, err := userSvc.Profile(pReq)
 	if err != nil {
-		fmt.Println("register user error:", err)
-	} else {
-		fmt.Println("registered user:", createdUser)
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+
+		return
 	}
 
-	isUnique, err := mysqlRepo.IsPhoneNumberUnique(createdUser.PhoneNumber)
+	data, err = json.Marshal(resp)
 	if err != nil {
-		fmt.Println("unique error:", err)
+		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+
+		return
 	}
 
-	fmt.Println("isUnique:", isUnique)
+	rw.Write(data)
+
 }
