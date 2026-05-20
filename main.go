@@ -4,14 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"gameapp/repository/mysql"
+	"gameapp/service/authservice"
 	"gameapp/service/userservice"
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 const (
-	JwtSignKey = "jwt_secret"
+	JwtSignKey                 = "jwt_secret"
+	AccessTokenSubject         = "at"
+	RefreshTokenSubject        = "rt"
+	AccessTokenExpireDuration  = time.Hour * 24
+	RefreshTokenExpireDuration = time.Hour * 24 * 7
 )
 
 func main() {
@@ -61,8 +67,11 @@ func userRegisterHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	authSvc := authservice.New(JwtSignKey, AccessTokenSubject, RefreshTokenSubject,
+		AccessTokenExpireDuration, RefreshTokenExpireDuration)
+
 	mysqlRepo := mysql.New()
-	userSvc := userservice.New(mysqlRepo, JwtSignKey)
+	userSvc := userservice.New(authSvc, mysqlRepo)
 
 	resp, err := userSvc.Register(uReq)
 	if err != nil {
@@ -102,8 +111,11 @@ func userLoginHandler(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	authSvc := authservice.New(JwtSignKey, AccessTokenSubject, RefreshTokenSubject,
+		AccessTokenExpireDuration, RefreshTokenExpireDuration)
+
 	mysqlRepo := mysql.New()
-	userSvc := userservice.New(mysqlRepo, JwtSignKey)
+	userSvc := userservice.New(authSvc, mysqlRepo)
 
 	resp, err := userSvc.Login(lReq)
 	if err != nil {
@@ -127,33 +139,26 @@ func userProfileHandler(rw http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(rw, `{"error": "invalid method"}`)
 	}
 
-	pReq := userservice.ProfileRequest{UserID: 0}
+	authSvc := authservice.New(JwtSignKey, AccessTokenSubject, RefreshTokenSubject,
+		AccessTokenExpireDuration, RefreshTokenExpireDuration)
 
-	data, err := io.ReadAll(req.Body)
+	authToken := req.Header.Get("Authorization")
+	claims, err := authSvc.ParseToken(authToken)
 	if err != nil {
-		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
-
-		return
-	}
-
-	err = json.Unmarshal(data, &pReq)
-	if err != nil {
-		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
-
-		return
+		fmt.Fprintf(rw, `{"error": "token is not valid"}`)
 	}
 
 	mysqlRepo := mysql.New()
-	userSvc := userservice.New(mysqlRepo, JwtSignKey)
+	userSvc := userservice.New(authSvc, mysqlRepo)
 
-	resp, err := userSvc.Profile(pReq)
+	resp, err := userSvc.Profile(userservice.ProfileRequest{UserID: claims.UserID})
 	if err != nil {
 		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 
 		return
 	}
 
-	data, err = json.Marshal(resp)
+	data, err := json.Marshal(resp)
 	if err != nil {
 		rw.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 

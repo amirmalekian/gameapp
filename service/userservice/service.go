@@ -2,12 +2,9 @@ package userservice
 
 import (
 	"fmt"
-	"time"
-
 	"gameapp/entity"
 	"gameapp/pkg/phonenumber"
 
-	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,13 +15,18 @@ type Repository interface {
 	GetUserByID(userID uint) (entity.User, error)
 }
 
-type Service struct {
-	signKey string
-	repo    Repository
+type AuthGenerator interface {
+	CreateAccessToken(user entity.User) (string, error)
+	CreateRefreshToken(user entity.User) (string, error)
 }
 
-func New(repo Repository, signKey string) Service {
-	return Service{repo: repo, signKey: signKey}
+type Service struct {
+	auth AuthGenerator
+	repo Repository
+}
+
+func New(authGenerator AuthGenerator, repo Repository) Service {
+	return Service{auth: authGenerator, repo: repo}
 }
 
 type RegisterRequest struct {
@@ -94,26 +96,32 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	AccessToken string `json:"access_token"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 func (s Service) Login(req LoginRequest) (LoginResponse, error) {
 	// TODO - it would be better to user two separate method for existence check and getUserByPhoneNumber
 	user, exists, err := s.repo.GetUserByPhoneNumber(req.PhoneNumber)
 	if err != nil {
-		return LoginResponse{}, fmt.Errorf("get user by phone number: %w", err)
+		return LoginResponse{}, fmt.Errorf("unexpected error, GetUserByPhoneNumber: %w", err)
 	}
 
 	if !exists || !checkPasswordHash(req.Password, user.Password) {
 		return LoginResponse{}, fmt.Errorf("invalid credentials")
 	}
 
-	token, err := createToken(user.ID, s.signKey)
+	accessToken, err := s.auth.CreateAccessToken(user)
 	if err != nil {
-		return LoginResponse{}, fmt.Errorf("unexpected error, createToken: %w", err)
+		return LoginResponse{}, fmt.Errorf("unexpected error, accessToken: %w", err)
 	}
 
-	return LoginResponse{AccessToken: token}, nil
+	refreshToken, err := s.auth.CreateRefreshToken(user)
+	if err != nil {
+		return LoginResponse{}, fmt.Errorf("unexpected error, refreshToken: %w", err)
+	}
+
+	return LoginResponse{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
 func hashPassword(password string) (string, error) {
@@ -150,35 +158,4 @@ func (s Service) Profile(req ProfileRequest) (ProfileResponse, error) {
 	}
 
 	return ProfileResponse{Name: user.Name}, nil
-}
-
-type Claims struct {
-	RegisteredClaims jwt.RegisteredClaims
-	UserID           uint
-}
-
-func (c Claims) Valid() error {
-	//return c.RegisteredClaims.Valid()
-	return nil
-}
-
-func createToken(userID uint, signKey string) (string, error) {
-	//	 create a signer for rsa 256
-	// TODO - replace with rsa 256 RS256
-
-	claims := Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 7)),
-		},
-		UserID: userID,
-	}
-
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := accessToken.SignedString([]byte(signKey))
-	if err != nil {
-		return "", err
-	}
-
-	// create token string
-	return tokenString, nil
 }
