@@ -22,7 +22,10 @@ type MySQLDB struct {
 }
 
 func New(config Config) *MySQLDB {
-	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@(%s:%d)/%s", config.Username, config.Password, config.Host, config.Port, config.DBName))
+	// parsTime=true changes the output type of DATE and DATETIME values to time.Time
+	// instead of []byte / string
+	// The date or datetime like 0000-00-00 00:00:00 is converted into zero value of time.Time
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@(%s:%d)/%s?parseTime=true", config.Username, config.Password, config.Host, config.Port, config.DBName))
 	if err != nil {
 		panic(fmt.Errorf("could not connect to database: %v", err))
 		//or use =>log.Fatalln()
