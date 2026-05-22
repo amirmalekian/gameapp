@@ -1,0 +1,10 @@
+-- +migrate Up
+CREATE TABLE users (
+        id  int PRIMARY KEY AUTO_INCREMENT,
+        name  varchar(255) not null ,
+        phone_number varchar(255) not null UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- +migrate Down
+DROP TABLE users;
