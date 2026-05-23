@@ -1,6 +1,8 @@
 package httpserver
 
 import (
+	"gameapp/dto"
+	"gameapp/pkg/httpmsg"
 	"gameapp/service/userservice"
 	"net/http"
 
@@ -10,7 +12,8 @@ import (
 func (s Server) userLogin(c echo.Context) error {
 	var req userservice.LoginRequest
 	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		msg, code := httpmsg.Error(err)
+		return echo.NewHTTPError(code, msg)
 	}
 
 	resp, err := s.userSvc.Login(req)
@@ -22,9 +25,17 @@ func (s Server) userLogin(c echo.Context) error {
 }
 
 func (s Server) userRegister(c echo.Context) error {
-	var req userservice.RegisterRequest
+	var req dto.RegisterRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	if err, fieldErrors := s.uservalidator.ValidateRegisterRequest(req); err != nil {
+		msg, code := httpmsg.Error(err)
+		return c.JSON(code, echo.Map{
+			"message": msg,
+			"errors":  fieldErrors,
+		})
 	}
 
 	resp, err := s.userSvc.Register(req)
@@ -44,7 +55,8 @@ func (s Server) userProfile(c echo.Context) error {
 
 	resp, err := s.userSvc.Profile(userservice.ProfileRequest{UserID: claims.UserID})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		msg, code := httpmsg.Error(err)
+		return echo.NewHTTPError(code, msg)
 	}
 
 	return c.JSON(http.StatusOK, resp)
